@@ -37,9 +37,15 @@ yarn-error.log*
 
 # Build
 dist/
-build/
+build/python/
+!build/python/README.md
+!build/install_python.bat
+!build/install_python.sh
+dist-electron/
 *.exe
 *.msi
+*.dmg
+*.AppImage
 
 # IDE
 .vscode/

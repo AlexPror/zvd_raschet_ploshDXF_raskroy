@@ -1,0 +1,20 @@
+appId: com.zvd.nesting
+productName: ZVD Nesting Calculator
+directories:
+  output: frontend/dist-electron
+  buildResources: frontend/build
+
+win:
+  target: nsis
+  sign: null
+  signAndEditExecutable: false
+  signDlls: false
+  verifyUpdateCodeSignature: false
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ZVD Nesting Calculator
+
