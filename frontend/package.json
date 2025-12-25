@@ -2,22 +2,102 @@
   "name": "zvd-nesting-web",
   "version": "1.0.0",
   "description": "ZVD Nesting Calculator - Web Interface",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron": "electron .",
+    "electron:dev": "cross-env NODE_ENV=development electron .",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win",
+    "electron:build:mac": "npm run build && electron-builder --mac",
+    "electron:build:linux": "npm run build && electron-builder --linux",
+    "electron:build:all": "npm run build && electron-builder --win --mac --linux"
   },
   "dependencies": {
+    "@mdi/font": "^7.4.0",
+    "axios": "^1.6.0",
     "vue": "^3.4.0",
     "vue-router": "^4.2.5",
-    "vuetify": "^3.5.0",
-    "@mdi/font": "^7.4.0",
-    "axios": "^1.6.0"
+    "vuetify": "^3.5.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
+    "cross-env": "^7.0.3",
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3",
     "vite": "^5.0.0",
     "vite-plugin-vuetify": "^2.0.0"
+  },
+  "author": "ZVD",
+  "build": {
+    "appId": "com.zvd.nesting",
+    "productName": "ZVD Nesting Calculator",
+    "directories": {
+      "output": "dist-electron",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "../backend/**/*",
+      "!../backend/uploads/**/*",
+      "!../backend/__pycache__/**/*",
+      "!../backend/**/*.pyc",
+      "!../backend/backend.log",
+      "../VERSION",
+      "../README.md"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!uploads/**/*",
+          "!__pycache__/**/*",
+          "!**/*.pyc",
+          "!backend.log"
+        ]
+      },
+      {
+        "from": "../build/python",
+        "to": "python",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "sign": null,
+      "signAndEditExecutable": false,
+      "signDlls": false,
+      "verifyUpdateCodeSignature": false,
+      "certificateFile": null,
+      "certificatePassword": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ZVD Nesting Calculator"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "build/icon.png",
+      "category": "Utility"
+    }
   }
 }
-

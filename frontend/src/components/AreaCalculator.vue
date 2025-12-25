@@ -207,6 +207,22 @@
             </v-btn>
           </v-col>
         </v-row>
+        
+        <!-- Кнопка очистки данных -->
+        <v-row class="mt-2">
+          <v-col cols="12">
+            <v-btn
+              color="error"
+              variant="outlined"
+              size="default"
+              @click="clearAllData"
+              block
+            >
+              <v-icon>mdi-delete-sweep</v-icon>
+              Очистить все данные
+            </v-btn>
+          </v-col>
+        </v-row>
       </v-card-text>
     </v-card>
 
@@ -551,7 +567,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import axios from 'axios'
+import apiClient from '../config/axios'
 import NestingVisualization from './NestingVisualization.vue'
 
 const files = ref([])
@@ -612,6 +628,23 @@ const loadMaterials = async () => {
  * Форматы: "001 - Корпус короба прямой 1600 1шт (А-151025-1235)" -> "А-151025-1235"
  *          "001_-_2200_1_-151025-1235" -> "151025-1235"
  */
+// Функция для очистки всех данных
+const clearAllData = () => {
+  if (confirm('Вы уверены, что хотите очистить все данные? Это действие нельзя отменить.')) {
+    // Очищаем все данные
+    files.value = []
+    parts.value = []
+    result.value = null
+    nestingResult.value = null
+    validationResult.value = null
+    loadedFiles.value.clear()
+    // orderNumber можно оставить или очистить - оставляем для удобства
+    // orderNumber.value = ''
+    
+    console.log('🗑️ Все данные очищены')
+  }
+}
+
 const extractOrderNumberFromFilename = (filename) => {
   if (!filename) return null
   
@@ -722,33 +755,49 @@ const uploadFiles = async () => {
     if (files.value.length === 0) {
       parts.value = []
       loadedFiles.value.clear()
+      console.log('🗑️ Все файлы удалены, данные очищены')
     }
     return
   }
   
-  // Определяем новые файлы (которые еще не загружены)
-  const newFiles = files.value.filter(file => !loadedFiles.value.has(file.name))
+  // Определяем новые файлы
+  // Используем уникальный идентификатор: имя + размер + дата изменения
+  // Это позволяет загружать файлы с одинаковыми именами, если они разные файлы
+  const getFileId = (file) => `${file.name}_${file.size}_${file.lastModified}`
   
-  if (newFiles.length === 0) {
-    // Все файлы уже загружены
+  // Находим файлы, которые еще не загружены (по уникальному ID)
+  const newFiles = files.value.filter(file => !loadedFiles.value.has(getFileId(file)))
+  
+  // Если все файлы уже загружены, но пользователь добавил файлы с одинаковыми именами,
+  // разрешаем повторную загрузку для суммирования деталей
+  if (newFiles.length === 0 && files.value.length > 0) {
+    console.log('ℹ️ Все файлы загружены, но разрешаю повторную загрузку для суммирования одинаковых деталей')
+    // Продолжаем с загрузкой всех файлов
+  } else if (newFiles.length === 0) {
     return
   }
   
-  console.log('📤 Загрузка новых файлов:', newFiles.length, 'из', files.value.length, 'всего')
+  // Загружаем новые файлы (или все, если разрешена повторная загрузка)
+  const filesToUpload = newFiles.length > 0 ? newFiles : files.value
+  
+  console.log('📤 Загрузка файлов:', filesToUpload.length, 'из', files.value.length, 'всего')
   uploading.value = true
   
   try {
     const formData = new FormData()
     
-    // Загружаем только новые файлы
-    for (const file of newFiles) {
-      console.log('  📄 Новый файл:', file.name, 'размер:', file.size, 'байт')
+    // Загружаем файлы
+    for (const file of filesToUpload) {
+      console.log('  📄 Файл:', file.name, 'размер:', file.size, 'байт')
       formData.append('files', file)
-      loadedFiles.value.add(file.name)
+      // Отмечаем файл как загруженный только если он новый
+      if (newFiles.includes(file)) {
+        loadedFiles.value.add(getFileId(file))
+      }
     }
     
     console.log('🌐 Отправляю запрос на /api/upload')
-    const response = await axios.post('/api/upload', formData, {
+    const response = await apiClient.post('/api/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120000, // 2 минуты таймаут для больших файлов
       onUploadProgress: (progressEvent) => {
@@ -772,17 +821,31 @@ const uploadFiles = async () => {
     })
     
     // Объединяем с существующими деталями (если есть)
+    // Если детали с одинаковым именем уже есть, СУММИРУЕМ количество
     const existingPartsMap = new Map(parts.value.map(p => [p.name, p]))
+    let addedCount = 0
+    let mergedCount = 0
+    
     for (const newPart of newParts) {
       if (existingPartsMap.has(newPart.name)) {
         // Если деталь уже есть, СУММИРУЕМ количество
         const existing = existingPartsMap.get(newPart.name)
+        const oldQuantity = existing.quantity
         existing.quantity = existing.quantity + newPart.quantity
-        console.log(`  Обновлено количество для ${newPart.name}: ${existing.quantity}`)
+        mergedCount++
+        console.log(`  🔄 Объединено: "${newPart.name}" - было ${oldQuantity} шт, добавлено ${newPart.quantity} шт, стало ${existing.quantity} шт`)
       } else {
         // Добавляем новую деталь
         parts.value.push(newPart)
+        addedCount++
+        console.log(`  ➕ Добавлена новая деталь: "${newPart.name}" (${newPart.quantity} шт)`)
       }
+    }
+    
+    if (mergedCount > 0) {
+      console.log(`✅ Итого: объединено ${mergedCount} деталей, добавлено новых ${addedCount} деталей`)
+    } else if (addedCount > 0) {
+      console.log(`✅ Добавлено новых деталей: ${addedCount}`)
     }
     
     // Извлекаем номер заказа из названий файлов, если не указан вручную
@@ -829,7 +892,7 @@ const calculate = async () => {
     }
     
     console.log('📤 Отправляю запрос:', requestData)
-    const response = await axios.post('/api/calculate', requestData)
+    const response = await apiClient.post('/api/calculate', requestData)
     
     console.log('📥 Получен ответ:', response.data)
     result.value = response.data
@@ -863,7 +926,7 @@ const calculateNesting = async () => {
     console.log('📤 Отправляю запрос:', requestData)
     console.log('🌐 URL: /api/nesting/calculate')
     
-    const response = await axios.post('/api/nesting/calculate', requestData)
+    const response = await apiClient.post('/api/nesting/calculate', requestData)
     
     console.log('📥 Получен ответ:', response.data)
     console.log('✅ Статус:', response.status)
@@ -873,7 +936,7 @@ const calculateNesting = async () => {
     // Валидация раскроя
     console.log('🔍 Запускаю валидацию раскроя...')
     try {
-      const validateResponse = await axios.post('/api/nesting/validate', {
+      const validateResponse = await apiClient.post('/api/nesting/validate', {
         sheets: response.data.sheets,
         sheet_width: response.data.sheet_width,
         sheet_height: response.data.sheet_height
@@ -931,8 +994,9 @@ const importExcel = async () => {
     const formData = new FormData()
     formData.append('file', excelFile.value[0])
     
-    const response = await axios.post('/api/import/excel', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+    const response = await apiClient.post('/api/import/excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000
     })
     
     if (response.data.success && response.data.parts) {
@@ -975,7 +1039,7 @@ const importPDF = async () => {
     const formData = new FormData()
     formData.append('file', pdfFile.value[0])
     
-    const response = await axios.post('/api/import/pdf', formData, {
+    const response = await apiClient.post('/api/import/pdf', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     
@@ -1017,10 +1081,12 @@ const exportToExcel = async () => {
   exportingExcel.value = true
   
   try {
-    const response = await axios.post('/api/export/excel', {
+    const response = await apiClient.post('/api/export/excel', {
       nesting_result: nestingResult.value,
       validation_result: validationResult.value,
       order_number: orderNumber.value || '',
+      material_name: selectedMaterial.value ? selectedMaterial.value.name : '',
+      material_price: selectedMaterial.value ? selectedMaterial.value.price_per_m2 : 0,
       material_price: selectedMaterial.value ? selectedMaterial.value.price_per_m2 : 0,
       material_name: selectedMaterial.value ? selectedMaterial.value.name : ''
     }, {
@@ -1070,7 +1136,7 @@ const exportToPDF = async () => {
   exportingPDF.value = true
   
   try {
-    const response = await axios.post('/api/export/pdf', {
+    const response = await apiClient.post('/api/export/pdf', {
       nesting_result: nestingResult.value,
       validation_result: validationResult.value,
       material_price: selectedMaterial.value ? selectedMaterial.value.price_per_m2 : 0,
